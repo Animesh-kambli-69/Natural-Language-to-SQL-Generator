@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build artifacts
+frontend/dist/
+backend/dist/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+frontend/.env
+backend/.env
+ai-service/.env
+
+# Python
+ai-service/.venv/
+ai-service/__pycache__/
+ai-service/.pytest_cache/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
