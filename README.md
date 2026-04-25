@@ -1,140 +1,252 @@
-# Natural Language to SQL Generator (JavaScript + FastAPI)
+# Natural Language to SQL Generator
 
-A full-stack web application that converts plain-English questions into SQL with schema-aware prompting.
+> Translate plain-English questions into safe, dialect-aware SQL using a three-tier architecture: React frontend → Express API → FastAPI AI service.
 
-## Stack
+---
 
-- Frontend: React + Vite + Tailwind CSS (JavaScript)
-- Backend API: Node.js + Express + MongoDB (Mongoose)
-- AI Service: Python + FastAPI (mock or external LLM mode)
+## Table of Contents
 
-## Core Features Implemented
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Repository Structure](#repository-structure)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Environment Variables](#environment-variables)
+- [Running Services](#running-services)
+- [Documentation](#documentation)
+- [Security](#security)
+- [License](#license)
 
-- Schema Upload and Selection:
-  - Users save schema text with dialect metadata.
-  - One schema can be selected as the active context for generation.
-- Query Interface:
-  - Chat-like prompt panel for natural language questions.
-  - SQL output rendered in a syntax-highlighted code block using `react-syntax-highlighter`.
-- Python Inference Layer:
-  - FastAPI endpoint receives user query + schema context.
-  - Prompt engineering uses the required template:
-    - "Given the following SQL schema: {schema_context}, translate the user's request into a valid PostgreSQL query: {user_query}"
-  - Schema linking narrows schema context to relevant tables/columns.
-- History Panel:
-  - MongoDB stores generated query history per user.
-  - Sidebar can re-run previous prompts via backend route.
-- Latency Optimization (simulated <900ms target):
-  - Express -> FastAPI proxy uses keep-alive HTTP agents.
-  - Axios timeout bounded by `LLM_MAX_RESPONSE_MS`.
-  - FastAPI mock generation uses cached deterministic responses.
+---
 
-- Security hardening:
-  - Backend auth uses httpOnly cookies instead of storing JWT in frontend localStorage.
-  - Auth and query endpoints are rate-limited.
-  - FastAPI accepts generation requests only with a shared internal service token.
+## Overview
 
-## Architecture and Data Flow
+The **NL2SQL Generator** lets authenticated users describe what data they want in plain English, and automatically produces a safe, read-only SQL query against their uploaded database schema. Queries are always scoped to the requesting user, persisted in history, and can be re-run at any time.
 
-1. User logs in/registers from the React app.
-2. User uploads/selects schema in frontend.
-3. User submits natural language query.
-4. Express route `/api/query/generate` validates auth + schema and forwards request to FastAPI `/generate-sql`.
-5. FastAPI performs schema linking + prompt construction and returns SQL.
-6. Express persists history in MongoDB and returns SQL + metadata to frontend.
-7. Frontend renders highlighted SQL and updates history sidebar.
+The system runs in three independent processes that communicate over HTTP:
 
-## Key Endpoints
-
-### Express (backend)
-
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/schemas`
-- `POST /api/schemas`
-- `GET /api/history`
-- `POST /api/query/generate` (proxy to FastAPI)
-- `POST /api/query/rerun/:historyId`
-
-### FastAPI (ai-service)
-
-- `GET /health`
-- `POST /generate-sql`
-
-## Local Setup
-
-### 1) Start MongoDB
-
-Option A: Docker
-
-```bash
-docker compose up -d
+```
+Browser (React/Vite :5173)
+    │  REST + HttpOnly cookie auth
+    ▼
+Express API (:4000)   ←→   MongoDB
+    │  Internal service token
+    ▼
+FastAPI AI Service (:8000)
+    │  LLM_MODE=mock | external
+    ▼
+LLM (mock or real endpoint)
 ```
 
-Option B: local MongoDB on `mongodb://localhost:27017`
+---
 
-### 2) Configure environment files
+## Architecture
 
-Copy examples and edit values:
+| Tier | Technology | Responsibility |
+|---|---|---|
+| **Frontend** | React 18 + Vite + Tailwind CSS | UI, auth state, schema/history management |
+| **Backend API** | Node 20 + Express 4 + Mongoose | Auth (JWT cookie), business logic, DB persistence, rate limiting |
+| **AI Service** | Python 3.14 + FastAPI + Uvicorn | Schema linking, prompt building, LLM call, SQL safety enforcement |
+| **Database** | MongoDB 7 | Users, schemas, query history |
 
-- root `.env.example`
-- `backend/.env.example`
-- `frontend/.env.example`
-- `ai-service/.env.example`
+Full architecture details → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
-Make sure the same `AI_SERVICE_TOKEN` value is configured in both backend and ai-service env files.
+---
 
-### 3) Install dependencies
+## Features
 
-Frontend:
+- **Natural Language → SQL** — type a question, get a query
+- **Multi-dialect support** — PostgreSQL, MySQL, SQLite, Redshift, BigQuery
+- **Schema manager** — save, name, and switch between multiple schemas
+- **Query history** — all generated queries persisted and re-runnable
+- **JWT cookie auth** — HttpOnly, SameSite, production-secure cookies
+- **Read-only enforcement** — AI service rejects any non-SELECT/WITH output
+- **Rate limiting** — dual-layer (Express + FastAPI) per-user throttling
+- **Mock LLM mode** — works fully offline without an API key
 
-```bash
-cd frontend
-npm install
+---
+
+## Repository Structure
+
+```
+.
+├── README.md                  ← you are here
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── .env.example               ← root env reference
+├── .gitignore
+├── docker-compose.yml         ← MongoDB only
+│
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── API.md
+│
+├── frontend/                  ← React/Vite SPA
+│   ├── README.md
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── api/client.js
+│   │   └── components/
+│   │       ├── AuthPanel.jsx
+│   │       ├── HistoryPanel.jsx
+│   │       ├── QueryPanel.jsx
+│   │       ├── SchemaPanel.jsx
+│   │       └── SqlOutput.jsx
+│   └── ...
+│
+├── backend/                   ← Node/Express REST API
+│   ├── README.md
+│   └── src/
+│       ├── server.js
+│       ├── config/
+│       ├── middleware/
+│       ├── models/
+│       ├── routes/
+│       ├── services/
+│       └── utils/
+│
+└── ai-service/                ← FastAPI AI service
+    ├── README.md
+    └── app/
+        ├── main.py
+        ├── models.py
+        ├── sql_generator.py
+        ├── llm_client.py
+        ├── schema_linking.py
+        └── prompting.py
 ```
 
-Backend:
+---
+
+## Prerequisites
+
+| Tool | Minimum version | Notes |
+|---|---|---|
+| Node.js | 20 | `node --version` |
+| npm | 10 | bundled with Node 20 |
+| Python | 3.12+ | tested on 3.14 |
+| uv | any | fast Python package manager |
+| MongoDB | 7 | or use Docker Compose |
+
+---
+
+## Quick Start
+
+### 1 — Clone & set up environment files
 
 ```bash
-cd ../backend
-npm install
+# Copy the example env and fill in real secrets for each service
+cp .env.example backend/.env
+cp ai-service/.env.example ai-service/.env
+cp frontend/.env.example frontend/.env
 ```
 
-AI service:
+Edit `backend/.env` and replace the placeholder values:
+
+```
+JWT_SECRET=<32+ random chars with upper, lower, digit, symbol>
+AI_SERVICE_TOKEN=<same value you put in ai-service/.env>
+```
+
+### 2 — Start MongoDB
 
 ```bash
+# Via Docker (recommended)
+docker-compose up -d
+
+# Or use a local MongoDB instance on port 27017
+```
+
+### 3 — Install dependencies
+
+```bash
+# Backend (Node)
+cd backend && npm install
+
+# Frontend (Node)
+cd ../frontend && npm install
+
+# AI service (Python via uv)
 cd ../ai-service
-python -m venv .venv
-.venv\\Scripts\\activate
-pip install -r requirements.txt
+uv venv .venv
+uv pip install -r requirements.txt --python .venv/Scripts/python.exe
 ```
 
-### 4) Run services
+### 4 — Start all three services
 
-Run in three terminals:
-
-Frontend:
+Open three terminals (or use a process manager):
 
 ```bash
-cd frontend
-npm run dev
-```
+# Terminal 1 — AI service
+cd ai-service
+.venv/Scripts/python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-Backend:
-
-```bash
+# Terminal 2 — Express backend
 cd backend
 npm run dev
+
+# Terminal 3 — Frontend
+cd frontend
+npm run dev
 ```
 
-AI service:
+Open **http://localhost:5173** in your browser.
 
-```bash
-cd ai-service
-uvicorn app.main:app --reload --port 8000
+---
+
+## Environment Variables
+
+See each service's README for full variable details:
+
+| File | Variables documented |
+|---|---|
+| [`backend/README.md`](backend/README.md#environment-variables) | `JWT_SECRET`, `MONGO_URI`, `AI_SERVICE_TOKEN`, … |
+| [`ai-service/README.md`](ai-service/README.md#environment-variables) | `AI_SERVICE_TOKEN`, `LLM_MODE`, `EXTERNAL_LLM_URL`, … |
+| [`frontend/README.md`](frontend/README.md#environment-variables) | `VITE_API_BASE_URL` |
+
+---
+
+## Running Services
+
+| Service | Command | Default port |
+|---|---|---|
+| MongoDB (Docker) | `docker-compose up -d` | 27017 |
+| FastAPI AI service | `.venv/Scripts/python.exe -m uvicorn app.main:app --reload` (from `ai-service/`) | 8000 |
+| Express backend | `npm run dev` (from `backend/`) | 4000 |
+| Vite frontend | `npm run dev` (from `frontend/`) | 5173 |
+
+Health check endpoints:
+
+```
+GET http://localhost:8000/health  →  {"status":"ok","service":"fastapi-ai"}
+GET http://localhost:4000/health  →  {"status":"ok","service":"express-api"}
 ```
 
-## Production Bridge Note
+---
 
-For token streaming and lower perceived latency, replace request/response proxying with gRPC streams or WebSocket/SSE between backend and AI service.
+## Documentation
 
+| Document | Contents |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System design, data flow, component responsibilities |
+| [`docs/API.md`](docs/API.md) | Full REST API reference (all endpoints, request/response schemas) |
+| [`backend/README.md`](backend/README.md) | Backend setup, env vars, project structure |
+| [`ai-service/README.md`](ai-service/README.md) | AI service setup, LLM modes, env vars |
+| [`frontend/README.md`](frontend/README.md) | Frontend setup, component map, env vars |
+| [`SECURITY.md`](SECURITY.md) | Security model, secret requirements, reporting vulnerabilities |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Branch strategy, code style, PR checklist |
+
+---
+
+## Security
+
+- All secrets are validated for strength at process startup — placeholder values crash the server intentionally.
+- SQL output is always enforced read-only by the AI service before returning to the client.
+- See [`SECURITY.md`](SECURITY.md) for the full security model.
+
+---
+
+## License
+
+MIT — see `LICENSE` for details.
