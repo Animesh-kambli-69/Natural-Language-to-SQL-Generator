@@ -14,7 +14,15 @@ const aiClient = axios.create({
   httpsAgent: keepAliveHttpsAgent
 });
 
-export async function requestSqlGeneration({ question, schemaText, dialect }) {
+export async function requestSqlGeneration({ question, schemaText, dialect, userId }) {
+  if (!question || !schemaText) {
+    throw new Error('Missing required SQL generation inputs');
+  }
+
+  if (!userId) {
+    throw new Error('requestSqlGeneration requires userId for AI rate limiting');
+  }
+
   const startedAt = Date.now();
 
   const response = await aiClient.post('/generate-sql', {
@@ -23,7 +31,8 @@ export async function requestSqlGeneration({ question, schemaText, dialect }) {
     dialect
   }, {
     headers: {
-      'X-Internal-Service-Token': env.aiServiceToken
+      'X-Internal-Service-Token': env.aiServiceToken,
+      'X-User-Id': userId
     }
   });
 

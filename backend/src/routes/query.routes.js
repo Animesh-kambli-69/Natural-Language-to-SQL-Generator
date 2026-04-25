@@ -44,7 +44,8 @@ router.post(
     const aiResult = await requestSqlGeneration({
       question,
       schemaText: resolvedSchema.schemaText,
-      dialect: dialect || resolvedSchema.dialect
+      dialect: dialect || resolvedSchema.dialect,
+      userId: req.user.id
     });
 
     const historyItem = await QueryHistory.create({
@@ -98,7 +99,8 @@ router.post(
     const aiResult = await requestSqlGeneration({
       question: historyItem.question,
       schemaText: schema.schemaText,
-      dialect: historyItem.dialect
+      dialect: historyItem.dialect,
+      userId: req.user.id
     });
 
     const newHistoryItem = await QueryHistory.create({

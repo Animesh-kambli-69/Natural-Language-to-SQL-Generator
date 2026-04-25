@@ -26,6 +26,7 @@ const authRateLimiter = rateLimit({
 const queryRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 45,
+  keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
   standardHeaders: true,
   legacyHeaders: false,
   message: {
