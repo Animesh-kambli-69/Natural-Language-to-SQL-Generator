@@ -27,3 +27,6 @@ ai-service/.pytest_cache/
 # OS
 .DS_Store
 Thumbs.db
+
+# Documentation
+docs/
